@@ -3,7 +3,7 @@ optimisation for assembly
 
 spec: 2,2 GHz Intel Core i7
 
-## Multiplication
+## Multiplication (Integer without taking care of carry)
 
 ```
 ====MULTIPLICATION BY 2=========
