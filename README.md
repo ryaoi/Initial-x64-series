@@ -1,7 +1,11 @@
 # Initial-x64-series
 optimisation for assembly
 
-spec: 2,2 GHz Intel Core i7
+my pc spec: 2,2 GHz Intel Core i7
+
+amazing book to read : https://www.agner.org/optimize/optimizing_assembly.pdf
+
+
 
 ## Multiplication (Integer without taking care of carry)
 
