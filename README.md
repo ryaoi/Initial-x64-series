@@ -227,6 +227,113 @@ xor edx, ecx ; = (a < 0) ? b : c
 ```
 
 
+## Optimizing for size 
+
+### Choosing shorter instructions
+
+I will show how short its going to be on 64bits
+
+Instructions with pointers take one byte less when they have only a base pointer (except
+ESP, RSP or R12) and a displacement than when they have a scaled index register, or both
+base pointer and index register, or ESP, RSP or R12 as base pointer. Examples:
+```
+  400080:	67 8b 45 0c          	mov    eax,DWORD PTR [ebp+0xc]
+  400084:	67 8b 44 24 0c       	mov    eax,DWORD PTR [esp+0xc]
+```
+
+Instructions with BP, EBP, RBP or R13 as base pointer and no displacement and no index
+take one byte more than with other registers:
+```
+  400089:	67 8b 03             	mov    eax,DWORD PTR [ebx]
+  40008c:	67 8b 45 00          	mov    eax,DWORD PTR [ebp+0x0]
+```
+
+Instructions in 64-bit mode need a REX prefix if at least one of the registers R8 - R15 or XMM8
+- XMM15 are used. Instructions that use these registers are therefore one byte longer than
+instructions that use other registers, unless a REX prefix is needed anyway for other
+reasons:
+```
+  400098:	8b 03                	mov    eax,DWORD PTR [rbx]
+  40009a:	41 8b 00             	mov    eax,DWORD PTR [r8]
+```
+
+### Using shorter constants and addresses
+Data constants may also take less space if they are between -128 and +127. Most
+instructions with immediate operands have a short form where the operand is a signextended
+single byte. Examples:
+```
+  400080:	68 c8 00 00 00       	push   0xc8 ; push 200
+  400085:	6a 64                	push   0x64 ; push 100
+```
+
+```
+  400087:	81 c3 80 00 00 00    	add    ebx,0x80               ;  add  128 
+  40008d:	83 eb 80             	sub    ebx,0xffffff80         ;  sub -128
+```
+
+Shorter alternatives for MOV register,constant are often useful. Examples:
+```
+  400080:	b8 00 00 00 00       	mov    eax,0x0    ; 5 bytes
+  400085:	29 c0                	sub    eax,eax    ; 2 bytes
+```
+
+```
+  400087:	b8 01 00 00 00       	mov    eax,0x1    ; 5 bytes
+ 
+  40008c:	29 c0                	sub    eax,eax    ; 2 bytes
+  40008e:	ff c0                	inc    eax        ; 2 bytes so total 4 bytes
+
+  400090:	6a 01                	push   0x1        ; 2 bytes
+  400092:	58                   	pop    rax        ; 1 byte so total 3 bytes
+  
+  
+  
+    400085:	48 29 c0             	sub    rax,rax ; <- sub rax, rax takes 3 bytes so better use 'sub eax,eax'
+    
+```
+
+```
+  400093:	b8 ff ff ff ff       	mov    eax,0xffffffff  ; 5 bytes
+  400098:	83 c8 ff             	or     eax,0xffffffff  ; 3 bytes
+```
+
+
+### Cache
+
+Align stuff by 16 bytes. code and data.
+
+### Loop
+
+The loop overhead is the instructions needed for jumping back to the beginning of the loop
+and to determine when to exit the loop. Optimizing these instructions is a fairly general
+technique that can be applied in many situations. 
+gnu already does some optimization about this so there is no need to talk about this.
+
+Example:
+```
+0000000000000660 <main>:
+ 660:	55                   	push   rbp
+ 661:	48 89 e5             	mov    rbp,rsp
+ 664:	c7 45 f8 0a 00 00 00 	mov    DWORD PTR [rbp-0x8],0xa
+ 66b:	c7 45 fc 00 00 00 00 	mov    DWORD PTR [rbp-0x4],0x0
+ 672:	eb 04                	jmp    678 <main+0x18>
+ 674:	83 45 fc 01          	add    DWORD PTR [rbp-0x4],0x1
+ 678:	8b 45 fc             	mov    eax,DWORD PTR [rbp-0x4]
+ 67b:	3b 45 f8             	cmp    eax,DWORD PTR [rbp-0x8]
+ 67e:	7c f4                	jl     674 <main+0x14>
+ 680:	b8 00 00 00 00       	mov    eax,0x0
+ 685:	5d                   	pop    rbp
+ 686:	c3                   	ret
+ 687:	66 0f 1f 84 00 00 00 	nop    WORD PTR [rax+rax*1+0x0]
+ 68e:	00 00
+```
+
+`jl     674 <main+0x14>` jump under the other `jmp` instruction so it's all good!
+
+
+
+
+
 
 
 
