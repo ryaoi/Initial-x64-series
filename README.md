@@ -92,6 +92,45 @@ point addition, multiplication, memory read, memory write.
 
 (page 62 from optimizing_assembly.pdf)
 
+## Break dependency chains
+
+In order to take advantage of out-of-order execution, you have to avoid long dependency
+chains.
+
+For :
+```
+	double list[SIZE], sum = 0.;
+	for (long i = 0; i < SIZE; i++) sum += list[i];
+ ```
+ It took:
+ ```
+ ┌─[ryaoi@e1r6p14] - [~] - [Mon Oct 29, 18:03]
+└─[$] <> time ./a.out
+./a.out  0.00s user 0.00s system 79% cpu 0.011 total
+```
+
+For :
+```
+	double list[SIZE], sum1 = 0., sum2 = 0., sum3 = 0., sum4 = 0.;
+	for (int i = 0; i < SIZE; i += 4) {
+		sum1 += list[i];
+		sum2 += list[i+1];
+		sum3 += list[i+2];
+		sum4 += list[i+3];
+	}
+	sum1 = (sum1 + sum2) + (sum3 + sum4);
+ ```
+ 
+ It took:
+ 
+ ```
+ ┌─[ryaoi@e1r6p14] - [~] - [Mon Oct 29, 18:02]
+└─[$] <> time ./a.out
+./a.out  0.00s user 0.00s system 60% cpu 0.009 total
+```
+
+
+
 ## Multiplication (Integer without taking care of carry)
 
 ```
