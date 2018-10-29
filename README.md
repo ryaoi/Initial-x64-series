@@ -92,7 +92,7 @@ point addition, multiplication, memory read, memory write.
 
 (page 62 from optimizing_assembly.pdf)
 
-## Break dependency chains
+### Break dependency chains
 
 In order to take advantage of out-of-order execution, you have to avoid long dependency
 chains.
@@ -128,6 +128,106 @@ For :
 └─[$] <> time ./a.out
 ./a.out  0.00s user 0.00s system 60% cpu 0.009 total
 ```
+
+### Replacing conditional jumps with conditional moves
+The most important jumps to eliminate are conditional jumps, especially if they are poorly
+predicted. The advantage of a conditional move is that it avoids branch mispredictions. But it has the
+disadvantage that it increases the length of a dependency chain, while a predicted branch
+breaks the dependency chain.
+
+__C code__
+```
+a = b > c ? d : e;
+```
+
+__Branch implemented with conditional jump__
+```
+ ; Branch implemented with conditional jump
+ mov eax, [b]
+ cmp eax, [c]
+ jng L1
+ mov eax, [d]
+ jmp L2
+L1: mov eax, [e]
+L2: mov [a], eax
+```
+
+__Branch implemented with conditional move__
+```
+ ; Branch implemented with conditional move
+ mov eax, [b]
+ cmp eax, [c]
+ mov eax, [d]
+ cmovng eax, [e]
+ mov [a], eax
+ ```
+
+### Replacing conditional jumps with conditional set instructions
+An implementation with conditional jumps may be faster than conditional set if the prediction
+rate is good and the code is part of a long dependency chain.
+
+__C code__
+```
+// Set a bool variable on some condition
+int b, c;
+bool a = b > c;
+```
+
+__Implementation with conditional set, only 8bit__
+```
+mov eax, [b]
+cmp eax, [c]
+setg al
+mov [a], al
+```
+
+__Implementation with conditional set, 32 bits__
+```
+;  Implementation with conditional set, 32 bits
+mov eax, [b]
+cmp eax, [c]
+setg al
+movzx eax, al
+mov [a], eax
+```
+
+### Replacing conditional jumps with bit-manipulation instructions
+
+__Calculate absolute value__
+```
+; Calculate absolute value of eax
+cdq ; Copy sign bit of eax to all bits of edx
+xor eax, edx ; Invert all bits if negative
+sub eax, edx ; Add 1 if negative
+```
+
+__finds the minimum of two unsigned numbers: if (b > a) b = a__
+```
+sub eax, ebx ; = a-b
+sbb edx, edx ; = (b > a) ? 0xFFFFFFFF : 0
+and edx, eax ; = (b > a) ? a-b : 0
+add ebx, edx ; Result is in ebx
+```
+
+__chooses between two numbers: if (a < 0) d = b; else d = c;__
+```
+test eax, eax          ; check if a < 0
+mov edx, ecx           ; edx = c
+cmovs edx, ebx ; = (a < 0) ? b : c
+```
+
+Conditional moves are not very efficient on Intel processors and not available on old
+processors. Alternative implementations may be faster in some cases.
+__chooses between two numbers: if (a < 0) d = b; else d = c; without cmov__
+```
+cdq ; = (a < 0) ? 0xFFFFFFFF : 0
+xor ebx, ecx ; b ^ c = bits that differ between b and c
+and edx, ebx ; = (a < 0) ? (b ^ c) : 0
+xor edx, ecx ; = (a < 0) ? b : c
+```
+
+
+
 
 
 
