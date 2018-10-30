@@ -97,6 +97,10 @@ point addition, multiplication, memory read, memory write.
 In order to take advantage of out-of-order execution, you have to avoid long dependency
 chains.
 
+
+`#define SIZE 0xF0000`
+
+
 For :
 ```
 	double list[SIZE], sum = 0.;
@@ -330,6 +334,153 @@ Example:
 
 `jl     674 <main+0x14>` jump under the other `jmp` instruction so it's all good!
 
+### Problematic Instructions
+
+#### lea
+
+The LEA instruction is useful for many purposes because it can do a shift operation, two
+additions, and a move in just one instruction.
+
+```
+lea eax, [ebx+8*ecx-1000]
+```
+
+which is same as :
+```
+mov eax, ecx
+shl eax, 3
+add eax, ebx
+sub eax, 1000
+```
+
+The processors have no documented addressing mode with a scaled index register and
+nothing else. Therefore, an instruction like lea eax,[ebx*2] is actually coded as lea
+eax,[ebx*2+00000000H] with an immediate displacement of 4 bytes. The size of this
+instruction can be reduced by writing lea eax,[ebx+ebx]. If you happen to have a register
+that is zero (like a loop counter after a loop) then you may use it as a base register to
+reduce the code size:
+
+```
+67 8d 04 9d 00 00 00 	lea    eax,[ebx*4+0x0]   ; lea eax, [ebx*4]     ; 8 bytes
+67 8d 04 99          	lea    eax,[ecx+ebx*4]   ; lea eax, [ecx+ebx*4] ; 4 bytes
+```
+
+```
+  400080:	8d 04 9d 00 00 00 00 	lea    eax,[rbx*4+0x0] ; lea eax, [rbx*4]  	; 7bytes
+  400087:	8d 04 99             	lea    eax,[rcx+rbx*4] ; lea eax,[rcx+rbx*4]	; 3 bytes
+```
+
+### INC and DEC
+
+Use ADD and SUB when optimizing for speed. Use INC and DEC when optimizing for size or
+when no penalty is expected.
+
+### Bit test
+
+BT, BTC, BTR, and BTS instructions should preferably be replaced by instructions like TEST,
+AND, OR, XOR, or shifts on older processors. Bit test
+instructions are useful when optimizing for size.
+
+### Integer multiplication (all processors)
+
+An integer multiplication takes from 3 to 14 clock cycles, depending on the processor. It is
+therefore often advantageous to replace a multiplication by a constant with a combination of
+other instructions such as SHL, ADD, SUB, and LEA. For example IMUL EAX,5 can be
+replaced by LEA EAX,[EAX+4*EAX].
+
+### Division (all processors) 
+
+#### Integer division by a power of 2 (all processors)
+
+```
+; Divide unsigned integer by 2^N
+shr eax, N
+```
+
+```
+; Divide signed integer by 2^N
+cdq
+shr edx,32-N
+add eax, edx
+sar eax, N
+```
+
+### Integer division by a constant (all processors)
+
+b = (the number of significant bits in d) - 1
+r = w + b
+f = 2r
+/ d
+If f is an integer then d is a power of 2: go to case A.
+If f is not an integer, then check if the fractional part of f is < 0.5
+If the fractional part of f < 0.5: go to case B.
+If the fractional part of f > 0.5: go to case C.
+case A (d = 2b):
+result = x SHR b
+case B (fractional part of f < 0.5):
+round f down to nearest integer
+149
+result = ((x+1) * f) SHR r
+case C (fractional part of f > 0.5):
+round f up to nearest integer
+result = (x * f) SHR r
+
+Example:
+Assume that you want to divide by 5.
+5 = 101B.
+w = 32.
+b = (number of significant binary digits) - 1 = 2
+r = 32+2 = 34
+f = 234 / 5 = 3435973836.8 = 0CCCCCCCC.CCC...(hexadecimal)
+
+The fractional part is greater than a half: use case C.
+Round f up to 0CCCCCCCDH.
+The following code divides EAX by 5 and returns the result in EDX:
+```
+; Divide unsigned integer eax by 5
+mov edx, 0CCCCCCCDH
+mul edx
+shr edx, 2 
+```
+
+```
+
+  segment .text
+  global _start
+
+_start:
+	push rbp
+	mov rbp, rsp
+	push 11
+	pop  rax
+	mov edx, 0CCCCCCCDH
+	mul edx
+	shr edx, 2
+	leave
+	ret
+	
+gdb-peda$ info register edx
+edx            0x2	0x2
+gdb-peda$
+```
+
+the result is good!
+
+### String instructions (all processors) 
+
+REP MOVSD and REP STOSD are quite fast if the repeat count is not too small. Always use
+the largest word size possible (DWORD in 32-bit mode, QWORD in 64-bit mode), and make sure
+that both source and destination are aligned by the word size. In many cases, however, it is
+faster to use XMM registers. Moving data in XMM registers is faster than REP MOVSD and
+REP STOSD in most cases, especially on older processors. See page 164 for details.
+
+On many processors, REP MOVS and REP STOS can perform fast by moving 16 bytes or an
+entire cache line at a time. This happens only when certain conditions are met. Depending
+on the processor, the conditions for fast string instructions are, typically, that the count must
+be high, both source and destination must be aligned, the direction must be forward, the
+distance between source and destination must be at least the cache line size, and the
+memory type for both source and destination must be either write-back or write-combining
+(you can normally assume the latter condition is met).
 
 
 
@@ -337,8 +488,9 @@ Example:
 
 
 
+## Some examples on my machine
 
-## Multiplication (Integer without taking care of carry)
+### Multiplication (Integer without taking care of overflow)
 
 ```
 ====MULTIPLICATION BY 2=========
